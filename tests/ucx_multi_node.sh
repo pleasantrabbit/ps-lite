@@ -1,8 +1,8 @@
-export BINARY=./test_benchmark_cuda
-export BINARY=./test_benchmark_stress
+export BINARY=${BINARY:-./test_benchmark_stress}
 # export BINARY=./test_benchmark_ucx
-export ARGS="4096000 999999999 1"
-export ARGS="30000000 1000000000 0"
+# export BINARY=./test_benchmark_cuda
+# export ARGS=${ARGS:-4096000 999999999 1}
+export ARGS=${ARGS:-30000000 1000000000 0}
 
 function cleanup() {
     echo "kill all testing process of ps lite for user $USER"
@@ -21,10 +21,7 @@ export DMLC_NUM_SERVER=$DMLC_NUM_WORKER
 export CUDA_HOME=/opt/tiger/cuda_10_0
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:/data00/home/haibin.lin/ps-lite-repos/ps-lite-test-benchmark-gcc4-prefix-librdma-master/ucx_build/lib
 
-# export NODE_ONE_IP=10.0.0.1 # sched and server
-# export NODE_TWO_IP=10.0.0.2 # worker
-
-export DMLC_PS_ROOT_URI=${NODE_ONE_IP}  # try eth2
+export DMLC_PS_ROOT_URI=${NODE_ONE_IP}
 export BYTEPS_ORDERED_HOSTS=${NODE_ONE_IP},${NODE_TWO_IP}
 
 export DMLC_PS_ROOT_PORT=${DMLC_PS_ROOT_PORT:-12279} # scheduler's port (can random choose)
@@ -42,12 +39,12 @@ export DMLC_ENABLE_UCX=${DMLC_ENABLE_UCX:-1}          # enable ucx
 # export UCX_RNDV_SCHEME=put_zcopy
 # export BYTEPS_UCX_SHORT_THRESH=0
 
-export LOCAL_SIZE=0               # test ucx gdr
-export CUDA_VISIBLE_DEVICES=0,1
+export LOCAL_SIZE=2               # test ucx gdr
+export CUDA_VISIBLE_DEVICES=6,7
 # export UCX_IB_GPU_DIRECT_RDMA=yes
 
 export BYTEPS_ENABLE_IPC=0
-export BENCHMARK_NTHREAD=8
+export BENCHMARK_NTHREAD=${BENCHMARK_NTHREAD:-8}
 
 if [ $# -eq 0 ] # no other args
 then
