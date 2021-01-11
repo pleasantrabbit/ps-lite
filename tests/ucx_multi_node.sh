@@ -39,7 +39,7 @@ export DMLC_ENABLE_UCX=${DMLC_ENABLE_UCX:-1}          # enable ucx
 # export UCX_RNDV_SCHEME=put_zcopy
 # export BYTEPS_UCX_SHORT_THRESH=0
 
-export LOCAL_SIZE=2               # test ucx gdr
+export LOCAL_SIZE=${LOCAL_SIZE:-2}               # test ucx gdr
 export CUDA_VISIBLE_DEVICES=6,7
 # export UCX_IB_GPU_DIRECT_RDMA=yes
 
