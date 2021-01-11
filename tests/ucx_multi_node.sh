@@ -2,7 +2,7 @@ export BINARY=./test_benchmark_cuda
 export BINARY=./test_benchmark_stress
 # export BINARY=./test_benchmark_ucx
 export ARGS="4096000 999999999 1"
-export ARGS="30000000 999999999 1"
+export ARGS="30000000 1000000000 0"
 
 function cleanup() {
     echo "kill all testing process of ps lite for user $USER"
@@ -32,6 +32,9 @@ export UCX_IB_TRAFFIC_CLASS=236
 export DMLC_INTERFACE=eth2        # my RDMA interface
 export UCX_TLS=ib,cuda
 export DMLC_ENABLE_RDMA=1
+export UCX_NET_DEVICES=mlx5_2:1
+export UCX_MAX_RNDV_RAILS=2
+
 export DMLC_ENABLE_UCX=${DMLC_ENABLE_UCX:-1}          # enable ucx
 # export PS_VERBOSE=2
 
@@ -44,6 +47,7 @@ export CUDA_VISIBLE_DEVICES=0,1
 # export UCX_IB_GPU_DIRECT_RDMA=yes
 
 export BYTEPS_ENABLE_IPC=0
+export BENCHMARK_NTHREAD=8
 
 if [ $# -eq 0 ] # no other args
 then
@@ -55,7 +59,7 @@ then
 
     DMLC_ROLE=scheduler $BINARY &
     if [ $DMLC_NUM_WORKER == "2" ]; then
-      DMLC_ROLE=worker BENCHMARK_NTHREAD=1 $BINARY $ARGS &
+      DMLC_ROLE=worker $BINARY $ARGS &
     fi
     # launch server
     DMLC_ROLE=server $BINARY
@@ -66,6 +70,6 @@ export UCX_RDMA_CM_SOURCE_ADDRESS=${NODE_TWO_IP}
 export BYTEPS_NODE_ID=1
 
 if [ $DMLC_NUM_WORKER == "2" ]; then
-  DMLC_ROLE=server BENCHMARK_NTHREAD=1 $BINARY &
+  DMLC_ROLE=server $BINARY &
 fi
-DMLC_ROLE=worker BENCHMARK_NTHREAD=1 $BINARY $ARGS
+DMLC_ROLE=worker $BINARY $ARGS
