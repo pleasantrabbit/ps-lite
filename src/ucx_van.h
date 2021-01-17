@@ -850,24 +850,24 @@ class UCXVan : public Van {
   /**
    * from the left to the right:
    * 1 bit for UCX_TAG_META/UCX_TAG_DATA
-   * 31 bits for the sender node_id
-   * 32 bits for the key
+   * 15 bits for the sender node_id
+   * 48 bits for the key
    */
   ucp_tag_t MakeTag(int node_id, Tags tag, uint64_t key) {
     ucp_tag_t ret = 0;
 
-    assert(((ucp_tag_t)node_id & 0xFFFFFFFF80000000) == 0);
-    ret = (ucp_tag_t)node_id << 32;
+    assert(((ucp_tag_t)node_id & 0xFFFFFFFFFFFF8000) == 0);
+    ret = (ucp_tag_t)node_id << 48;
     ret &= ~static_cast<uint64_t>(Tags::UCX_TAG_MASK);
     ret |= static_cast<uint64_t>(tag);
-    ret |= (key & 0xFFFFFFFF);
+    ret |= (key & 0xFFFFFFFFFFFF);
 
     return ret;
   }
 
   int NodeIdFromTag(ucp_tag_t tag) {
     tag &= ~static_cast<uint64_t>(Tags::UCX_TAG_MASK);
-    return (int)(tag >> 32);
+    return (int)(tag >> 48);
   }
 
   static void RequestInit(void *request) {
