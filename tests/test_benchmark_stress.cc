@@ -119,81 +119,6 @@ void StartServer() {
   RegisterExitCallback([server]() { delete server; });
 }
 
-void push_pull(KVWorker<char>* kv,
-               std::vector<SArray<Key> > &server_keys,
-               std::vector<SArray<char> > &server_vals, 
-               std::vector<SArray<int> > &server_lens,
-               int len, int num_servers, int total_key_num, 
-               int how_many_key_per_server, MODE mode, int tid) {
-  CHECK_GT(mode, 0);
-  switch (mode) {
-    case PUSH_PULL: 
-      LOG(INFO) << "========= PUSH_PULL mode =========";
-      LOG(INFO) << "========= msg_size=" << len*sizeof(char) << " bytes =========";
-      break;
-    case PUSH_ONLY: 
-      LOG(INFO) << "========= PUSH_ONLY mode =========";
-      LOG(INFO) << "========= msg_size=" << len*sizeof(char) << " bytes =========";
-       break;
-    case PULL_ONLY: 
-      LOG(INFO) << "========= PULL_ONLY mode =========";
-      LOG(INFO) << "========= msg_size=" << len*sizeof(char) << " bytes =========";
-      break;
-    default: CHECK(0);
-  }
-
-  std::vector<int> timestamp_list;
-  auto start = std::chrono::high_resolution_clock::now();
-  auto end = std::chrono::high_resolution_clock::now();
-  
-  auto val = Environment::Get()->find("LOG_DURATION");
-  unsigned int log_duration = val ? atoi(val) : 10;
-
-  auto total_val = Environment::Get()->find("TOTAL_DURATION");
-  int total_log_duration = total_val ? atoi(total_val) : 4000000000;
-
-  int cnt = 0;
-  int total_cnt = 0;
-  while (total_cnt < total_log_duration) {
-    for (int key = 0; key < total_key_num; key++) {
-      auto keys = server_keys[key];
-      auto lens = server_lens[key];
-      auto vals = server_vals[key];
-
-      switch (mode) {
-        case PUSH_PULL: {
-          timestamp_list.push_back(kv->ZPush(keys, vals, lens));
-          timestamp_list.push_back(kv->ZPull(keys, &vals, &lens));
-        } break;
-        case PUSH_ONLY: {
-          timestamp_list.push_back(kv->ZPush(keys, vals, lens));
-        } break;
-        case PULL_ONLY: {
-          timestamp_list.push_back(kv->ZPull(keys, &vals, &lens));
-        } break;
-        default: {
-          CHECK(0);
-          break;
-        } 
-      }
-    }
-
-    for (auto& ts : timestamp_list) { kv->Wait(ts); }
-    timestamp_list.clear();
-    
-    cnt++;
-    total_cnt++;
-    if (cnt % log_duration != 0) continue;
-
-    end = std::chrono::high_resolution_clock::now();
-    LL << "[" << tid << "]\tApplication goodput: "
-        << 8.0 * len * sizeof(char) * total_key_num * cnt / (end - start).count() 
-        << " Gbps";
-    cnt = 0;
-    start = std::chrono::high_resolution_clock::now();
-  }
-}
-
 enum COMM_TYPE {
     SCATTER = 0,
     GATHER = 0,
@@ -207,7 +132,7 @@ inline int GetKeyIndex(COMM_TYPE type,
                        int global_gpu_size,
                        int num_servers) {
   switch (type) {
-    case SCATTER: { // COMM_TYPE::GATHER = COMM_TYPE::GATHER
+    case SCATTER: { // COMM_TYPE::GATHER = COMM_TYPE::SCATTER
       return global_session_rank * global_gpu_size + tgt_global_gpu_id;
     } break;
     case DATA_SCATTER: {
@@ -252,8 +177,9 @@ inline void InitOneKeyThenPush(ps::Key ps_key,
   memcpy(ptr_len, &len, sizeof(len));
   server_lens.push_back(lens);
 
-  if (should_push)
+  if (should_push) {
     kv->Wait(kv->ZPush(keys, vals, lens));
+  }
 }
 
 void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global_gpu_size, int num_servers, bool is_global_root) {
@@ -276,22 +202,15 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
       {
         int idx = GetKeyIndex(COMM_TYPE::DATA_SCATTER, global_session_id, global_gpu_id,
                               global_gpu_size, num_servers);
-        CHECK(idx == server_keys_datascatter.size()) 
+        CHECK_EQ(idx, server_keys_datascatter.size()) 
             << "global_session_id: " << global_session_id
             << " global_gpu_id: " << global_gpu_id
             << " idx: " << idx
             << " server_keys_datascatter.size(): " << server_keys_datascatter.size();
         auto vals = server_vals_datascatter[idx];
 
-        // LOG(INFO) << "global_session_id: " << global_session_id
-        //           << " global_gpu_id: " << global_gpu_id
-        //           << " SIZE: " << server_keys_datascatter.size();
         ps::Key ps_key = krs[server_id].begin() + latest_key;
         InitOneKeyThenPush(ps_key, server_keys_datascatter, server_lens, vals, len, kv, is_global_root);
-
-        // LOG(INFO) << "global_session_id: " << global_session_id
-        //           << " global_gpu_id: " << global_gpu_id
-        //           << " SIZE: " << server_keys_datascatter.size();
       }
       latest_key ++;
 
@@ -299,7 +218,7 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
       {
         int idx = GetKeyIndex(COMM_TYPE::GATHER, global_session_id, global_gpu_id,
                               global_gpu_size, num_servers);
-        CHECK(idx == server_keys_gather_scatter.size());
+        CHECK_EQ(idx, server_keys_gather_scatter.size());
         auto vals = server_vals_gather_scatter[idx];
 
         ps::Key ps_key = krs[server_id].begin() + latest_key;
@@ -314,7 +233,7 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
       {
         int idx = GetKeyIndex(COMM_TYPE::DENSE, global_session_id, server,
                               global_gpu_size, num_servers);
-        CHECK(idx == server_keys_dense.size());
+        CHECK_EQ(idx, server_keys_dense.size());
         auto vals = server_vals_dense[idx];
 
         ps::Key ps_key = krs[server].begin() + latest_key;
@@ -329,6 +248,20 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
 }
 
 void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread) {
+  // In UCX usage mode, we have four high level APIs. All of them involes inter-node commnications
+  // that invoke ps-lite push/pull under the hood. Data is always transfered src -> dst, and push
+  // is called from src, pull called from dst. Gather and scatter share pslite keys. We call these
+  // APIs in the order of DataScatter, Gather, Scatter, DenseReduce in a worker session, and multiple
+  // worker sessions will be present in the same node. They may be in different threads in the same 
+  // process or have their own processes. Each session will be bound to a local GPU card.
+  //
+  // UCX will enable all the following src-dst memory location combinations.
+  //
+  // DataScatter: ZPush (src local CPU, dst remote GPU). A session calls a ZPush for every GPU dst on every remote node.
+  // Gather: ZPull (src remote GPU, dst local GPU). A session calls a ZPull for every GPU src on every remote node.
+  // Scatter: ZPush (src local GPU, dst remote GPU). A session calls a ZPush for every GPU dst on every remote node.
+  // DenseReduce: ZPush (src local GPU, dst remote CPU) then one ZPull (src remote CPU, dst local GPU).
+  //              A session calls a ZPush + ZPull for each remote node.
   auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
 
   const int num_servers = krs.size();
@@ -342,20 +275,18 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
   auto num_node = num_servers;
   auto global_session_size = nthread * num_node;
 
-  // To simulate jaguar usage, per global session we have 
+  // To simulate UCX related usage, per global session we have 
   // denseReduce x1, (scatter, dataScatter) x (global_gpu_size - local_gpu_size),
   // gather use same key as scatter.
   int global_gpu_size = local_gpu_size * num_node;
-  const int total_key_num = global_session_size 
-                            * (1 + 2 * (global_gpu_size));
 
   auto node_id_str = Environment::Get()->find("BYTEPS_NODE_ID");
   int node_id = atoi(node_id_str);
   int my_global_session_id = nthread * node_id + tid;
 
-  LOG(INFO) << "Jaguar simulate mode";
+  LOG(INFO) << "UCX usage simulate mode";
   for (int minibatch = 0; minibatch < repeat; ++ minibatch) {
-    // dataScatter
+    // DataScatter
     uint64_t accumulated_ms = 0;
     {
       auto start = std::chrono::high_resolution_clock::now();
@@ -371,6 +302,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
         auto keys = server_keys_datascatter[idx];
         auto vals = server_vals_datascatter[idx];
 
+        // src local CPU, dst remote GPU.
         timestamps.push_back(kv->ZPush(keys, vals, lens));
       }
       for (auto ts : timestamps) {
@@ -385,7 +317,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
           << ", total_time="
           << accumulated_ms / 1e6 << "ms";
 
-    // gather
+    // Gather
     accumulated_ms = 0;
     {
       auto start = std::chrono::high_resolution_clock::now();
@@ -401,9 +333,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
         auto keys = server_keys_gather_scatter[idx];
         auto vals = server_vals_gather_scatter[idx];
 
-        auto ps_key = * keys.data();
-        // LOG(INFO) << "GATHER KEY = " << ps_key;
-
+        // src all remote GPUs, dst local GPU.
         timestamps.push_back(kv->ZPull(keys, &vals, &lens));
       }
       for (auto ts : timestamps) {
@@ -434,6 +364,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
         auto keys = server_keys_gather_scatter[idx];
         auto vals = server_vals_gather_scatter[idx];
 
+        // src one local GPU, dst all remote GPUs.
         timestamps.push_back(kv->ZPush(keys, vals, lens));
       }
       for (auto ts : timestamps) {
@@ -464,6 +395,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
         auto keys = server_keys_dense[idx];
         auto vals = server_vals_dense[idx];
 
+        // src one local GPU, dst all remote node's CPU host mem.
         timestamps.push_back(kv->ZPush(keys, vals, lens));
       }
       for (auto ts : timestamps) {
@@ -482,6 +414,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
         auto keys = server_keys_dense[idx];
         auto vals = server_vals_dense[idx];
 
+        // src all remote node's CPU host mem, dst one local GPU.
         timestamps.push_back(kv->ZPull(keys, &vals, &lens));
       }
       for (auto ts : timestamps) {
@@ -515,7 +448,6 @@ int main(int argc, char *argv[]) {
   // run worker nodes
   if (IsWorker()) {
     KVWorker<char> kv(0, 0);
-
     {
       auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
       const int num_servers = krs.size();
