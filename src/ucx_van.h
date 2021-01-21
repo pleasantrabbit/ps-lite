@@ -539,10 +539,10 @@ class UCXVan : public Van {
       UCXBuffer buf;
       recv_buffers_.WaitAndPop(&buf);
       RawMeta *raw = (RawMeta*) buf.raw_meta;
-      // XXX assume single reorder thread
+      // XXX assume a single reorder thread, so we do not need to acquire mutex
       // std::lock_guard<std::mutex> lk(sid_mtx_);
-      // for non-pushpull messages, we dont check the sid
       if (!IsPushpullRequest(raw) || !force_request_order_) {
+        // for non-pushpull messages, we dont check the sid
         ordered_recv_buffers_.Push(buf);
         continue;
       }
@@ -567,10 +567,10 @@ class UCXVan : public Van {
             break;
           }
         }
-        if (count > 0) PS_VLOG(1) << "OO count = " << count;
+        if (count > 0) PS_VLOG(4) << "out-of-order count = " << count;
         next_recv_sids_[sender] = next_sid;
       } else {
-        PS_VLOG(1) << "OO msg arrived early sid=" << sid;
+        PS_VLOG(4) << "out-of-order msg arrived. sid=" << sid;
         buffs[sid] = buf;
       }
     }
@@ -579,7 +579,6 @@ class UCXVan : public Van {
   int RecvMsg(Message *msg) override {
     msg->data.clear();
     UCXBuffer buf;
-    // recv_buffers_.WaitAndPop(&buf);
     ordered_recv_buffers_.WaitAndPop(&buf);
 
     // note size(2d param) is not really used by UnpackMeta
