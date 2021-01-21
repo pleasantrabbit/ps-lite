@@ -1,8 +1,6 @@
 export BINARY=${BINARY:-./test_benchmark_stress}
-# export BINARY=./test_benchmark_ucx
-# export BINARY=./test_benchmark_cuda
-# export ARGS=${ARGS:-4096000 999999999 1}
-export ARGS=${ARGS:-30000000 1000000000 0}
+export ARGS=${ARGS:-4096000 999999999 1}
+# export ARGS=${ARGS:-30000000 1000000000 0}
 
 function cleanup() {
     echo "kill all testing process of ps lite for user $USER"
@@ -30,8 +28,9 @@ export DMLC_INTERFACE=eth2        # my RDMA interface
 export UCX_TLS=ib,cuda
 export DMLC_ENABLE_RDMA=1
 export UCX_NET_DEVICES=mlx5_2:1
-export UCX_MAX_RNDV_RAILS=2
+export UCX_MAX_RNDV_RAILS=${UCX_MAX_RNDV_RAILS:-2}
 
+export DMLC_ENABLE_RDMA=${DMLC_ENABLE_RDMA:-1}        # enable rdma
 export DMLC_ENABLE_UCX=${DMLC_ENABLE_UCX:-1}          # enable ucx
 # export PS_VERBOSE=2
 
@@ -41,7 +40,7 @@ export DMLC_ENABLE_UCX=${DMLC_ENABLE_UCX:-1}          # enable ucx
 
 export LOCAL_SIZE=${LOCAL_SIZE:-2}               # test ucx gdr
 export CUDA_VISIBLE_DEVICES=6,7
-# export UCX_IB_GPU_DIRECT_RDMA=yes
+# export UCX_IB_GPU_DIRECT_RDMA=no
 
 export BYTEPS_ENABLE_IPC=0
 export BENCHMARK_NTHREAD=${BENCHMARK_NTHREAD:-8}
