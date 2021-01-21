@@ -2,20 +2,23 @@
 #include <cmath>
 #include <cstdlib>
 #include <unistd.h>
-#include <cuda_runtime.h>
 #include "ps/ps.h"
 
-#define DIVUP(x, y) (((x)+(y)-1)/(y))
-#define ROUNDUP(x, y) (DIVUP((x), (y))*(y))
-#define DEBUG_PRINT_TENSOR_VALUE(X) (*((float *)(X) + 0))
-#define DEBUG_PRINT_TENSOR_ADDRESS(X) (reinterpret_cast<uint64_t>(X))
-
+#if DMLC_USE_CUDA
+#include <cuda_runtime.h>
 #define CUDA_CALL(func)                                      \
   {                                                          \
     cudaError_t e = (func);                                  \
     CHECK(e == cudaSuccess || e == cudaErrorCudartUnloading) \
         << "CUDA: " << cudaGetErrorString(e);                \
   }
+#endif
+
+#define DIVUP(x, y) (((x)+(y)-1)/(y))
+#define ROUNDUP(x, y) (DIVUP((x), (y))*(y))
+#define DEBUG_PRINT_TENSOR_VALUE(X) (*((float *)(X) + 0))
+#define DEBUG_PRINT_TENSOR_ADDRESS(X) (reinterpret_cast<uint64_t>(X))
+
 
 using namespace ps;
 
@@ -91,9 +94,13 @@ void aligned_memory_alloc(void** ptr, size_t size, int device_idx, DeviceType de
     *ptr = p;
   } else {
     CHECK(device == GPU);
+#if DMLC_USE_CUDA
     // GPU Alloc, malloc should automatically gives page aligned.
     CUDA_CALL(cudaSetDevice(device_idx));
     CUDA_CALL(cudaMalloc(ptr, size));
+#else
+    CHECK(false) << "Please build with USE_CUDA=1";
+#endif
   }
 }
 

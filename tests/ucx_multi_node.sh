@@ -16,8 +16,9 @@ trap cleanup EXIT
 
 export DMLC_NUM_WORKER=${DMLC_NUM_WORKER:-1}
 export DMLC_NUM_SERVER=$DMLC_NUM_WORKER
-export CUDA_HOME=/opt/tiger/cuda_10_0
-export LD_LIBRARY_PATH=$CUDA_HOME/lib64:/data00/home/haibin.lin/ps-lite-repos/ps-lite-test-benchmark-gcc4-prefix-librdma-master/ucx_build/lib
+export CUDA_HOME=
+export UCX_HOME=
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$UCX_HOME/lib
 
 export DMLC_PS_ROOT_URI=${NODE_ONE_IP}
 export BYTEPS_ORDERED_HOSTS=${NODE_ONE_IP},${NODE_TWO_IP}
