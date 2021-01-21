@@ -143,6 +143,7 @@ inline int GetKeyIndex(COMM_TYPE type,
     } break;
     default: CHECK(0);
   }
+  return -1;
 }
 
 inline void InitVals(std::vector<SArray<char> >& server_vals, int num_keys, size_t len) {
@@ -273,7 +274,6 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
   int repeat = (argc > 2) ? atoi(argv[2]) : 100000;
 
   auto num_node = num_servers;
-  auto global_session_size = nthread * num_node;
 
   // To simulate UCX related usage, per global session we have 
   // denseReduce x1, (scatter, dataScatter) x (global_gpu_size - local_gpu_size),

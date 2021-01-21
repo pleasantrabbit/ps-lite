@@ -1,5 +1,4 @@
-#export BINARY=${BINARY:-./test_benchmark_stress}
-export BINARY=${BINARY:-./test_benchmark_ucx}
+export BINARY=${BINARY:-./test_benchmark_stress}
 export ARGS=${ARGS:-30000000 1000000000 0}
 
 function cleanup() {
