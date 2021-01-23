@@ -25,7 +25,6 @@ export BYTEPS_ORDERED_HOSTS=${NODE_ONE_IP},${NODE_TWO_IP}
 export DMLC_PS_ROOT_PORT=${DMLC_PS_ROOT_PORT:-12279} # scheduler's port (can random choose)
 export UCX_IB_TRAFFIC_CLASS=236
 export DMLC_INTERFACE=eth2        # my RDMA interface
-export UCX_TLS=ib,cuda
 export DMLC_ENABLE_RDMA=1
 export UCX_NET_DEVICES=mlx5_2:1
 export UCX_MAX_RNDV_RAILS=${UCX_MAX_RNDV_RAILS:-2}
