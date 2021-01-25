@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cmath>
+#include <thread>
 #include <cstdlib>
 #include <unistd.h>
 #include "ps/ps.h"
@@ -285,12 +286,12 @@ void StartServer(int argc, char *argv[]) {
   ps::Postoffice::Get()->Barrier(0, kWorkerGroup + kServerGroup);
 }
 
-void push_pull(KVWorker<char> &kv, 
+void push_pull(KVWorker<char>* kv,
                std::vector<SArray<Key> > &server_keys,
                std::vector<SArray<char> > &server_vals, 
                std::vector<SArray<int> > &server_lens,
-               int len, int num_servers, int total_key_num,
-               int how_many_key_per_server, MODE mode, int repeat) {
+               int len, int num_servers, int total_key_num, 
+               int how_many_key_per_server, MODE mode, int tid) {
   CHECK_GT(mode, 0);
   switch (mode) {
     case PUSH_PULL: 
@@ -314,9 +315,13 @@ void push_pull(KVWorker<char> &kv,
   
   auto val = Environment::Get()->find("LOG_DURATION");
   unsigned int log_duration = val ? atoi(val) : 10;
+
+  auto total_val = Environment::Get()->find("TOTAL_DURATION");
+  int total_log_duration = total_val ? atoi(total_val) : 2000000000;
   
   int cnt = 0;
-  while (cnt < repeat) {
+  int total_cnt = 0;
+  while (total_cnt < total_log_duration) {
     for (int key = 0; key < total_key_num; key++) {
       auto keys = server_keys[key];
       auto lens = server_lens[key];
@@ -324,14 +329,14 @@ void push_pull(KVWorker<char> &kv,
 
       switch (mode) {
         case PUSH_PULL: {
-          timestamp_list.push_back(kv.ZPush(keys, vals, lens));
-          timestamp_list.push_back(kv.ZPull(keys, &vals, &lens));
+          timestamp_list.push_back(kv->ZPush(keys, vals, lens));
+          timestamp_list.push_back(kv->ZPull(keys, &vals, &lens));
         } break;
         case PUSH_ONLY: {
-          timestamp_list.push_back(kv.ZPush(keys, vals, lens));
+          timestamp_list.push_back(kv->ZPush(keys, vals, lens));
         } break;
         case PULL_ONLY: {
-          timestamp_list.push_back(kv.ZPull(keys, &vals, &lens));
+          timestamp_list.push_back(kv->ZPull(keys, &vals, &lens));
         } break;
         default: {
           CHECK(0);
@@ -340,23 +345,23 @@ void push_pull(KVWorker<char> &kv,
       }
     }
 
-    for (auto& ts : timestamp_list) { kv.Wait(ts); }
+    for (auto& ts : timestamp_list) { kv->Wait(ts); }
     timestamp_list.clear();
     
     cnt++;
+    total_cnt++;
     if (cnt % log_duration != 0) continue;
 
     end = std::chrono::high_resolution_clock::now();
-    LL << "Application goodput: " 
-        << 8.0 * len * sizeof(char) * total_key_num * log_duration / (end - start).count()
-        << " Gbps. count = " << cnt;
+    LL << "[" << tid << "]\tApplication goodput: "
+        << 8.0 * len * sizeof(char) * total_key_num * cnt / (end - start).count() 
+        << " Gbps";
+    cnt = 0;
     start = std::chrono::high_resolution_clock::now();
   }
 }
 
-void RunWorker(int argc, char *argv[]) {
-  if (!IsWorker()) return;
-  KVWorker<char> kv(0, 0);
+void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid) {
   auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
 
   const int num_servers = krs.size();
@@ -389,7 +394,7 @@ void RunWorker(int argc, char *argv[]) {
 
   // init push, do not count this into time cost
   for (int key = 0; key < total_key_num; key++) {
-    kv.Wait(kv.ZPush(server_keys[key], server_vals[key], server_lens[key]));
+    kv->Wait(kv->ZPush(server_keys[key], server_vals[key], server_lens[key]));
   }
 
   switch(mode) {
@@ -404,7 +409,7 @@ void RunWorker(int argc, char *argv[]) {
           auto lens = server_lens[server];
           auto vals = server_vals[server];
 
-          kv.Wait(kv.ZPush(keys, vals, lens));
+          kv->Wait(kv->ZPush(keys, vals, lens));
         }
         auto end = std::chrono::high_resolution_clock::now();
         accumulated_ms += (end - start).count(); // ns
@@ -423,7 +428,7 @@ void RunWorker(int argc, char *argv[]) {
           auto lens = server_lens[server];
           auto vals = server_vals[server];
 
-          kv.Wait(kv.ZPull(keys, &vals, &lens));
+          kv->Wait(kv->ZPull(keys, &vals, &lens));
         }
         auto end = std::chrono::high_resolution_clock::now();
         accumulated_ms += (end - start).count(); // ns
@@ -437,7 +442,7 @@ void RunWorker(int argc, char *argv[]) {
     case PUSH_PULL: 
     case PUSH_ONLY: 
     case PULL_ONLY: 
-      push_pull(kv, server_keys, server_vals, server_lens, len, num_servers, total_key_num, how_many_key_per_server, mode, repeat);
+      push_pull(kv, server_keys, server_vals, server_lens, len, num_servers, total_key_num, how_many_key_per_server, mode, tid);
       break;
     default:
       CHECK(0) << "unknown mode " << mode;
@@ -462,13 +467,31 @@ int main(int argc, char *argv[]) {
   CHECK(local_size || enable_cpu);
   skip_dev_id_check = env2bool("SKIP_DEV_ID_CHECK", false);
 
+  auto v = Environment::Get()->find("BENCHMARK_NTHREAD");
+  const int nthread = v ? atoi(v) : 1;
+  LOG(INFO) << "number of threads for the same worker = " << nthread;
+
+  const char* val = CHECK_NOTNULL(Environment::Get()->find("DMLC_ROLE"));
+  std::string role_str(val);
+  Node::Role role = GetRole(role_str);
+
   // start system
-  Start(0);
+  StartPS(0, role);
   // setup server nodes
   StartServer(argc, argv);
   // run worker nodes
-  RunWorker(argc, argv);
+  if (!IsServer() && !IsScheduler()) {
+    KVWorker<char> kv(0, 0);
+    std::vector<std::thread> threads;
+    for (int i = 0; i < nthread; ++i) {
+      threads.emplace_back(RunWorker, argc, argv, &kv, threads.size());
+    }
+    for (int i = 0; i < nthread; ++i) {
+      threads[i].join();
+      LOG(INFO) << "Thread " << i << " is done.";
+    }
+  }
   // stop system
-  Finalize(0, true);
+  Finalize(0, role, true);
   return 0;
 }

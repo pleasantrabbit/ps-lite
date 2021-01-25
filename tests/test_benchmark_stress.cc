@@ -111,9 +111,7 @@ void EmptyHandler(const KVMeta &req_meta, const KVPairs<Val> &req_data, KVServer
 }
 
 void StartServer() {
-  if (!IsServer()) return;
   debug_mode_ = Environment::Get()->find("DEBUG_MODE") ? true : false;
-
   auto server = new KVServer<char>(0);
   server->set_request_handle(EmptyHandler<char>);
   RegisterExitCallback([server]() { delete server; });
@@ -203,7 +201,7 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
       {
         int idx = GetKeyIndex(COMM_TYPE::DATA_SCATTER, global_session_id, global_gpu_id,
                               global_gpu_size, num_servers);
-        CHECK_EQ(idx, server_keys_datascatter.size()) 
+        CHECK(idx == (int) server_keys_datascatter.size()) 
             << "global_session_id: " << global_session_id
             << " global_gpu_id: " << global_gpu_id
             << " idx: " << idx
@@ -219,7 +217,7 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
       {
         int idx = GetKeyIndex(COMM_TYPE::GATHER, global_session_id, global_gpu_id,
                               global_gpu_size, num_servers);
-        CHECK_EQ(idx, server_keys_gather_scatter.size());
+        CHECK(idx == (int) server_keys_gather_scatter.size());
         auto vals = server_vals_gather_scatter[idx];
 
         ps::Key ps_key = krs[server_id].begin() + latest_key;
@@ -234,7 +232,7 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
       {
         int idx = GetKeyIndex(COMM_TYPE::DENSE, global_session_id, server,
                               global_gpu_size, num_servers);
-        CHECK_EQ(idx, server_keys_dense.size());
+        CHECK(idx == (int) server_keys_dense.size());
         auto vals = server_vals_dense[idx];
 
         ps::Key ps_key = krs[server].begin() + latest_key;
@@ -244,7 +242,7 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
     }
   }
 
-  Postoffice::Get()->Barrier(0, ps::kWorkerGroup);
+  Postoffice::GetWorker()->Barrier(0, ps::kWorkerGroup);
   LOG(INFO) << "Finish setup.";
 }
 
@@ -442,40 +440,49 @@ int main(int argc, char *argv[]) {
   LOG(INFO) << "number of threads for the same worker = " << nthread;
 
   // start system
-  Start(0);
-  // setup server nodes
+  const char* val = CHECK_NOTNULL(Environment::Get()->find("DMLC_ROLE"));
+  std::string role_str(val);
+  Node::Role role = GetRole(role_str);
+  LOG(INFO) << "PS role = " << role_str;
+  if (role == Node::SCHEDULER) {
+    StartPS(0, role);
+    Finalize(0, role, true);
+    return 0;
+  }
+  
+  StartPS(0, role);
+  // setup server logic
   StartServer();
-  // run worker nodes
-  if (IsWorker()) {
-    KVWorker<char> kv(0, 0);
-    {
-      auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
-      const int num_servers = krs.size();
+  // run worker logic
+  KVWorker<char> kv(0, 0);
+  {
+    auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
+    const int num_servers = krs.size();
 
-      LOG(INFO) << num_servers << " servers in total";
-      CHECK_GT(num_servers, 0);
-      int len = (argc > 1) ? atoi(argv[1]) : 1024000 * 30;
-      auto num_node = num_servers;
-      auto global_session_size = nthread * num_node;
-      int global_gpu_size = local_gpu_size * num_node;
+    LOG(INFO) << num_servers << " servers in total";
+    CHECK_GT(num_servers, 0);
+    int len = (argc > 1) ? atoi(argv[1]) : 1024000 * 30;
+    auto num_node = num_servers;
+    auto global_session_size = nthread * num_node;
+    int global_gpu_size = local_gpu_size * num_node;
 
-      auto node_id_str = Environment::Get()->find("BYTEPS_NODE_ID");
-      int node_id = atoi(node_id_str);
+    auto node_id_str = Environment::Get()->find("BYTEPS_NODE_ID");
+    int node_id = atoi(node_id_str);
 
-      bool is_global_root = (node_id == 0);
-      InitWorker(&kv, len, global_session_size, global_gpu_size, num_servers, is_global_root);
-    }
+    bool is_global_root = (node_id == 0);
+    InitWorker(&kv, len, global_session_size, global_gpu_size, num_servers, is_global_root);
+  }
 
-    std::vector<std::thread> threads;
-    for (int i = 0; i < nthread; ++i) {
-      threads.emplace_back(RunWorker, argc, argv, &kv, threads.size(), nthread);
-    }
-    for (int i = 0; i < nthread; ++i) {
-      threads[i].join();
-      LOG(INFO) << "Thread " << i << " is done.";
-    }
+  std::vector<std::thread> threads;
+  for (int i = 0; i < nthread; ++i) {
+    threads.emplace_back(RunWorker, argc, argv, &kv, threads.size(), nthread);
+  }
+  // wait for workers
+  for (int i = 0; i < nthread; ++i) {
+    threads[i].join();
+    LOG(INFO) << "Thread " << i << " is done.";
   }
   // stop system
-  Finalize(0, true);
+  Finalize(0, role, true);
   return 0;
 }

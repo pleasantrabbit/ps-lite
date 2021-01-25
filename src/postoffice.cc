@@ -10,6 +10,12 @@
 #include "ps/base.h"
 
 namespace ps {
+
+Postoffice* Postoffice::po_server_ = nullptr;
+Postoffice* Postoffice::po_scheduler_ = nullptr;
+Postoffice* Postoffice::po_worker_ = nullptr;
+std::mutex Postoffice::singleton_mu_;
+
 Postoffice::Postoffice() {
   env_ref_ = Environment::_GetSharedRef();
 }
@@ -20,10 +26,10 @@ void Postoffice::InitEnvironment() {
   int enable_ucx  = GetEnv("DMLC_ENABLE_UCX", 0);
   if (enable_ucx) {
     LOG(INFO) << "enable UCX for networking";
-    van_ = Van::Create("ucx");
+    van_ = Van::Create("ucx", this);
   } else {
     LOG(INFO) << "Creating Van: " << van_type;
-    van_ = Van::Create(van_type);
+    van_ = Van::Create(van_type, this);
   }
   val = CHECK_NOTNULL(Environment::Get()->find("DMLC_NUM_WORKER"));
   num_workers_ = atoi(val);
@@ -37,10 +43,35 @@ void Postoffice::InitEnvironment() {
   verbose_ = GetEnv("PS_VERBOSE", 0);
 }
 
-void Postoffice::Start(int customer_id, const char* argv0, const bool do_barrier) {
+void Postoffice::Start(int customer_id, const char* argv0, const bool do_barrier,
+                       const Node::Role role) {
   start_mu_.lock();
   if (init_stage_ == 0) {
     InitEnvironment();
+    switch(role) {
+      case Node::WORKER: {
+        is_worker_ = true;
+        is_server_ = false;
+        is_scheduler_ = false;
+        break;
+      }
+      case Node::SERVER: {
+        is_worker_ = false;
+        is_server_ = true;
+        is_scheduler_ = false;
+        break;
+      }
+      case Node::SCHEDULER: {
+        is_worker_ = false;
+        is_server_ = false;
+        is_scheduler_ = true;
+        break;
+      }
+      default: {
+        CHECK(false) << "Unexpected role=" << role;
+      }
+    }
+
     // init glog
     if (argv0) {
       dmlc::InitLogging(argv0);

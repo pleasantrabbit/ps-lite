@@ -86,9 +86,10 @@ class KVWorker : public SimpleApp {
    * \param customer_id the customer id which is unique locally
    */
   explicit KVWorker(int app_id, int customer_id) : SimpleApp() {
+    postoffice_ = Postoffice::GetWorker();
     using namespace std::placeholders;
     slicer_ = std::bind(&KVWorker<Val>::DefaultSlicer, this, _1, _2, _3);
-    obj_ = new Customer(app_id, customer_id, std::bind(&KVWorker<Val>::Process, this, _1));
+    obj_ = new Customer(app_id, customer_id, std::bind(&KVWorker<Val>::Process, this, _1), postoffice_);
     auto val = Environment::Get()->find("DMLC_ENABLE_RDMA");
     auto enable_ucx  = Environment::Get()->find("DMLC_ENABLE_UCX");
     if (enable_ucx != nullptr && std::string(enable_ucx) == "1") {
@@ -307,6 +308,8 @@ class KVWorker : public SimpleApp {
   std::mutex log_mu_;
   /** \brief kv list slicer */
   Slicer slicer_;
+
+  Postoffice* postoffice_;
 };
 
 /** \brief meta information about a kv request */
@@ -342,9 +345,10 @@ class KVServer : public SimpleApp {
    * \brief constructor
    * \param app_id the app id, should match with \ref KVWorker's id
    */
-  explicit KVServer(int app_id) : SimpleApp() {
+  explicit KVServer(int app_id, bool is_scheduler = false) : SimpleApp() {
+    postoffice_ = is_scheduler ? Postoffice::GetScheduler() : Postoffice::GetServer();
     using namespace std::placeholders;
-    obj_ = new Customer(app_id, app_id, std::bind(&KVServer<Val>::Process, this, _1));
+    obj_ = new Customer(app_id, app_id, std::bind(&KVServer<Val>::Process, this, _1), postoffice_);
   }
 
   /** \brief deconstructor */
@@ -398,6 +402,8 @@ class KVServer : public SimpleApp {
   std::mutex mu_;
   /** \brief lock for profile logging */
   std::mutex log_mu_;
+
+  Postoffice* postoffice_;
 };
 
 
@@ -446,7 +452,6 @@ void KVServer<Val>::RegisterRecvBuffer(int worker_id, SArray<Key>& keys,
   msg.AddData(vals);
   CHECK(lens.size());
   msg.AddData(lens);
-  auto key_ptr = reinterpret_cast<Key*>(msg.data[0].data());
   Postoffice::Get()->van()->RegisterRecvBuffer(msg);
 }
 
@@ -504,7 +509,7 @@ void KVServer<Val>::Response(const KVMeta& req, const KVPairs<Val>& res) {
       msg.AddData(res.lens);
     }
   }
-  Postoffice::Get()->van()->Send(msg);
+  Postoffice::GetServer()->van()->Send(msg);
 }
 
 template <typename Val>
@@ -568,7 +573,7 @@ template <typename Val>
 void KVWorker<Val>::Send(int timestamp, bool push, int cmd, KVPairs<Val>& kvs) {
   // slice the message
   SlicedKVs sliced;
-  slicer_(kvs, Postoffice::Get()->GetServerKeyRanges(), &sliced);
+  slicer_(kvs, Postoffice::GetWorker()->GetServerKeyRanges(), &sliced);
 
   // need to add response first, since it will not always trigger the callback
   int skipped = 0;
@@ -589,7 +594,7 @@ void KVWorker<Val>::Send(int timestamp, bool push, int cmd, KVPairs<Val>& kvs) {
     msg.meta.push        = push;
     msg.meta.head        = cmd;
     msg.meta.timestamp   = timestamp;
-    msg.meta.recver      = Postoffice::Get()->ServerRankToID(i);
+    msg.meta.recver      = Postoffice::GetWorker()->ServerRankToID(i);
     auto& kvs = s.second;
     msg.meta.addr = reinterpret_cast<uint64_t>(kvs.vals.data());
     msg.meta.val_len = kvs.vals.size();
@@ -601,7 +606,7 @@ void KVWorker<Val>::Send(int timestamp, bool push, int cmd, KVPairs<Val>& kvs) {
         msg.AddData(kvs.lens);
       }
     }
-    Postoffice::Get()->van()->Send(msg);
+    Postoffice::GetWorker()->van()->Send(msg);
   }
 }
 
@@ -627,7 +632,7 @@ void KVWorker<Val>::Process(const Message& msg) {
 
   }
   // finished, run callbacks
-  if (obj_->NumResponse(ts) == Postoffice::Get()->num_servers() - 1)  {
+  if (obj_->NumResponse(ts) == Postoffice::GetWorker()->num_servers() - 1)  {
     RunCallback(ts);
   }
 }

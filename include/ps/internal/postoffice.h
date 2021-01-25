@@ -11,17 +11,44 @@
 #include "ps/internal/customer.h"
 #include "ps/internal/van.h"
 namespace ps {
+
 /**
  * \brief the center of the system
  */
 class Postoffice {
  public:
   /**
-   * \brief return the singleton object
+   * \brief return the Postoffice for server/scheduler if it exists. Otherwise
+   * return the one for worker
    */
   static Postoffice* Get() {
-    static Postoffice e; return &e;
+    return po_server_ ? po_server_ : po_worker_;
   }
+
+  static Postoffice* GetServer() {
+    std::lock_guard<std::mutex> lk(singleton_mu_);
+    if (!po_server_) {
+      po_server_ = new Postoffice;
+    }
+    return po_server_;
+  }
+
+  static Postoffice* GetScheduler() {
+    std::lock_guard<std::mutex> lk(singleton_mu_);
+    if (!po_scheduler_) {
+      po_scheduler_ = new Postoffice;
+    }
+    return po_scheduler_;
+  }
+
+  static Postoffice* GetWorker() {
+    std::lock_guard<std::mutex> lk(singleton_mu_);
+    if (!po_worker_) {
+      po_worker_ = new Postoffice;
+    }
+    return po_worker_;
+  }
+
   /** \brief get the van */
   Van* van() { return van_; }
   /**
@@ -31,7 +58,8 @@ class Postoffice {
    * \param argv0 the program name, used for logging.
    * \param do_barrier whether to block until every nodes are started.
    */
-  void Start(int customer_id, const char* argv0, const bool do_barrier);
+  void Start(int customer_id, const char* argv0, const bool do_barrier,
+             const Node::Role role);
   /**
    * \brief terminate the system
    *
@@ -132,6 +160,14 @@ class Postoffice {
   int is_server() const { return is_server_; }
   /** \brief Returns true if this node is a scheduler node. */
   int is_scheduler() const { return is_scheduler_; }
+
+  std::string role_str() const {
+    std::string str;
+    if (is_worker_) str = "worker";
+    if (is_scheduler_) str = "scheduler";
+    if (is_server_) str = "server";
+    return str;
+  }
   /** \brief Returns the verbose level. */
   int verbose() const { return verbose_; }
   /** \brief Return whether this node is a recovery node */
@@ -164,6 +200,11 @@ class Postoffice {
  private:
   Postoffice();
   ~Postoffice() { delete van_; }
+
+  static Postoffice* po_server_;
+  static Postoffice* po_scheduler_;
+  static Postoffice* po_worker_;
+  static std::mutex singleton_mu_;
 
   void InitEnvironment();
   Van* van_;
