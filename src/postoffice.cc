@@ -8,6 +8,7 @@
 #include "ps/internal/postoffice.h"
 #include "ps/internal/message.h"
 #include "ps/base.h"
+#include <iostream>
 
 namespace ps {
 Postoffice::Postoffice() {
@@ -29,6 +30,7 @@ void Postoffice::InitEnvironment() {
   num_workers_ = atoi(val);
   val =  CHECK_NOTNULL(Environment::Get()->find("DMLC_NUM_SERVER"));
   num_servers_ = atoi(val);
+  LOG(INFO) << "xxxx num_servers_ " << num_servers_;
   val = CHECK_NOTNULL(Environment::Get()->find("DMLC_ROLE"));
   std::string role(val);
   is_worker_ = role == "worker";
@@ -183,8 +185,10 @@ void Postoffice::Barrier(int customer_id, int node_group) {
 
 const std::vector<Range>& Postoffice::GetServerKeyRanges() {
   server_key_ranges_mu_.lock();
+  std::cout << "xxxx " << " num_servers_ " << num_servers_ << std::endl;
   if (server_key_ranges_.empty()) {
     for (int i = 0; i < num_servers_; ++i) {
+      LOG(INFO) << "xxxx adding key_range " << " num_servers_ " << num_servers_;
       server_key_ranges_.push_back(Range(
           kMaxKey / num_servers_ * i,
           kMaxKey / num_servers_ * (i+1)));
