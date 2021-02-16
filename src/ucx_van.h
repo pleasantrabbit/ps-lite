@@ -428,8 +428,6 @@ public:
     CHECK(buf);
     memset(buf, 0, size);
     rpool_[key][node_id] = UCXAddress(buf, size, false);
-    PS_VLOG(1) << "xxxx allocated new ptr  rpool_[" << key << "][" << node_id << "] = "
-	     << (long long)buf;
 
     return buf;
   }
@@ -448,9 +446,6 @@ public:
     }
 
     rpool_[key][sender] = UCXAddress(msg.data[1].data(), msg.data[1].size(), true);
-    // PS_VLOG(1) << "xxxx registered rpool_[" << key << "][" << sender << "]";
-    PS_VLOG(1) << "xxxx registered rpool_[" << key << "][" << sender << "] = "
-	     << (long long)msg.data[1].data();
   }
 
   void Push(UCXBuffer &data) {
@@ -522,7 +517,6 @@ public:
     w_params.thread_mode = UCS_THREAD_MODE_MULTI;
     status               = ucp_worker_create(context_, &w_params, &worker_);
     CHECK_STATUS(status) << "ucp_worker_create failed: " << ucs_status_string(status);
-    PS_VLOG(2) << "ucp_worker created ";
 
     // Check that UCX is compiled with multi-thread support
     ucp_worker_attr_t attr;
@@ -813,8 +807,8 @@ class UCXVan : public Van {
 
     // CHECK_EQ(num_cpu_dev + num_gpu_dev, node.num_ports);
     PS_VLOG(1) << " num_cpu_dev "
-	    << num_cpu_dev << " num_gpu_dev " << num_gpu_dev
-	    << " node.num_ports " << node.num_ports;
+      << num_cpu_dev << " num_gpu_dev " << num_gpu_dev
+      << " node.num_ports " << node.num_ports;
     // TODO: assume only one type of device for now, change it later.
     CHECK(num_cpu_dev == 0 || num_gpu_dev == 0);
     std::vector<std::pair<int, int>> devs;
@@ -1102,7 +1096,6 @@ class UCXVan : public Van {
    PS_VLOG(2) << "polling " << contexts_.size() << " ucp_contexts";
     while (!should_stop_.load()) {
       for (const auto& it : contexts_) {
-        PS_VLOG(3) << "inner polling context for local dev_id " << it.first;
         it.second->Poll();
       }
     }
