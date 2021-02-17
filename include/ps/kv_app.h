@@ -224,6 +224,22 @@ class KVWorker : public SimpleApp {
     return ts;
   }
 
+  int ZPush2(const SArray<Key>& keys,
+            const SArray<Val>& vals,
+            const SArray<int>& lens = {},
+            int cmd = 0,
+            int server = -1,
+            const Callback& cb = nullptr) {
+    int ts = obj_->NewRequest(kServerGroup);
+    AddCallback(ts, cb);
+    KVPairs<Val> kvs;
+    kvs.keys = keys;
+    kvs.vals = vals;
+    kvs.lens = lens;
+    Send2(ts, true, cmd, kvs, server);
+    return ts;
+  }
+
   /**
    * \brief zero-copy Pull
    *

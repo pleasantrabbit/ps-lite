@@ -8,6 +8,7 @@
 #include <vector>
 #include <memory>
 #include <sstream>
+#include <iostream>
 #include "ps/internal/utils.h"
 #include "ps/range.h"
 namespace ps {
