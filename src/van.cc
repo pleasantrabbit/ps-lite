@@ -568,16 +568,21 @@ void Van::Stop() {
   int ret = SendMsg(exit);
   CHECK_NE(ret, -1);
   receiver_thread_->join();
+  LOG(INFO) << "xxxx van receiver thread joined";
   init_stage = 0;
   if (!is_scheduler_) heartbeat_thread_->join();
+  LOG(INFO) << "xxxx van heartbeat thread joined";
   if (resender_) delete resender_;
   ready_ = false;
   connected_nodes_.clear();
+  LOG(INFO) << "xxxx van connected nodes cleared";
   shared_node_mapping_.clear();
+  LOG(INFO) << "xxxx van shared nodes mapping cleared";
   send_bytes_ = 0;
   timestamp_ = 0;
   my_node_.id = Meta::kEmpty;
   barrier_count_.clear();
+  LOG(INFO) << "xxxx van barrier count cleared";
 
 #ifdef USE_PROFILING
   if (is_van_profiling_) {

@@ -22,6 +22,7 @@
 #include <netdb.h>
 #include <queue>
 #include <set>
+#include <signal.h>
 
 #if DMLC_USE_CUDA
 #include <cuda_runtime.h>
@@ -450,6 +451,7 @@ public:
 
   void Push(UCXBuffer &data) {
     recv_buffers_.Push(data);
+    PushOrdered(data);
   }
 
   void Pop(UCXBuffer *data) {
@@ -786,15 +788,19 @@ class UCXVan : public Van {
   void Stop() override {
     PS_VLOG(1) << my_node_.ShortDebugString() << " is stopping";
     Van::Stop();
+    PS_VLOG(1) << my_node_.ShortDebugString() << " has stopped";
     should_stop_ = true;
     reorder_thread_->join();
+    PS_VLOG(1) << my_node_.ShortDebugString() << " reorder thread joined";
     reorder_thread_.reset();
     polling_thread_->join();
+    PS_VLOG(1) << my_node_.ShortDebugString() << " polling thread joined";
     polling_thread_.reset();
 
     for (const auto& it : contexts_) {
         it.second->Cleanup();
     }
+    PS_VLOG(1) << my_node_.ShortDebugString() << " all contexts cleaned up";
 
     rx_pool_.reset();
   }
@@ -1029,6 +1035,7 @@ class UCXVan : public Van {
   }
 
   void ReorderMsg() {
+    return;
     while (!should_stop_.load()) {
       UCXBuffer buf;
       rx_pool_->Pop(&buf);
@@ -1040,6 +1047,7 @@ class UCXVan : public Van {
         rx_pool_->PushOrdered(buf);
         continue;
       }
+      raise(SIGSEGV);
       int sid = raw->sid;
       CHECK(sid >= 0) << "invalid sid " << sid;
       int sender = buf.sender;

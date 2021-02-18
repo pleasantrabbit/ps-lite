@@ -93,8 +93,11 @@ void Postoffice::Start(int customer_id, const char* argv0, const bool do_barrier
 
 void Postoffice::StartWithRank(int customer_id, int preferred_rank, const char* argv0, const bool do_barrier) {
   // set preferred rank
+  int preferred_rank_env = GetEnv("DMLC_PREFERRED_RANK", -1);
+
+  preferred_rank_ = preferred_rank > -1 ? preferred_rank : preferred_rank_env;
   CHECK(preferred_rank_ >= -1) << preferred_rank_;
-  preferred_rank_ = preferred_rank;
+
   Postoffice::Start(customer_id, argv0, do_barrier);
 }
 
@@ -104,14 +107,22 @@ void Postoffice::Finalize(const int customer_id, const bool do_barrier) {
   if (customer_id == 0) {
     num_workers_ = 0;
     num_servers_ = 0;
+    LOG(INFO) << "xxxx stopping the van";
     van_->Stop();
+    LOG(INFO) << "xxxx van stopped";
     init_stage_ = 0;
     customers_.clear();
+    LOG(INFO) << "xxxx customers cleared";
     node_ids_.clear();
+    LOG(INFO) << "xxxx node ids cleared";
     barrier_done_.clear();
+    LOG(INFO) << "xxxx barrier done";
     server_key_ranges_.clear();
+    LOG(INFO) << "xxxx server key ranges cleared";
     heartbeats_.clear();
+    LOG(INFO) << "xxxx heartbeats cleared";
     if (exit_callback_) exit_callback_();
+    LOG(INFO) << "xxxx exit callback called";
   }
 }
 
