@@ -879,7 +879,8 @@ class UCXVan : public Van {
   int SendMsg(Message &msg) override {
     int id           = msg.meta.recver;
     int src_dev_id   = msg.meta.src_dev_id;
-    msg.meta.val_len = 0;
+    // why is this set to 0?
+    // msg.meta.val_len = 0;
     msg.meta.option  = 0;
     CHECK_NE(id, Meta::kEmpty);
 
@@ -899,9 +900,14 @@ class UCXVan : public Van {
         msg.meta.option  = UCX_OPTION_DATA;
       } else if (!msg.meta.push && msg.meta.request) {
         // Save pull data address
+        // msg.data is cleared already in KVWorker::Send()
+        // msg.meta.val_len = msg.data[1].size();
+        PS_VLOG(2) << " meta.val_len: " << msg.meta.val_len;
         CHECK(msg.meta.addr != 0);
         rx_pool_->CacheLocalAddress(msg.meta.key, (char*)msg.meta.addr);
       }
+    } else {
+      msg.meta.val_len = 0;
     }
 
     int len = SendMeta(src_dev_id, msg);

@@ -251,6 +251,11 @@ void Van::ProcessAddNodeCommandAtScheduler(Message *msg, Meta *nodes, Meta *reco
     nodes->control.cmd = Control::ADD_NODE;
     Message back;
     back.meta = *nodes;
+    PS_VLOG(1) << "xxxx node ids in GetNodeIDs(kWorkerGroup + kServerGroup): ";
+    for (int r : Postoffice::Get()->GetNodeIDs(kWorkerGroup + kServerGroup)) {
+      PS_VLOG(1) << "xxxx node id: " << r;
+    }
+
     for (int r : Postoffice::Get()->GetNodeIDs(kWorkerGroup + kServerGroup)) {
       int recver_id = r;
       if (shared_node_mapping_.find(r) == shared_node_mapping_.end()) {
@@ -294,7 +299,9 @@ void Van::UpdateLocalID(Message* msg, std::unordered_set<int>* deadnodes_set,
   // assign an id
   if (msg->meta.sender == Meta::kEmpty) {
     CHECK(is_scheduler_);
+    PS_VLOG(1) << "ctrl.node.size() = " << ctrl.node.size();
     CHECK_EQ(ctrl.node.size(), 1);
+    PS_VLOG(1) << "ctrl.node.size() = " << ctrl.node.size();
     if (static_cast<int>(nodes->control.node.size()) < (int) num_nodes) {
       nodes->control.node.push_back(ctrl.node[0]);
     } else {
@@ -594,6 +601,12 @@ void Van::Stop() {
 }
 
 int Van::Send(Message &msg) {
+  if (is_scheduler_) {
+    if (msg.meta.recver == kScheduler
+        && msg.meta.control.cmd == Control::ADD_NODE) {
+      raise(SIGSEGV);
+    }
+  }
   int send_bytes = SendMsg(msg);
   CHECK_NE(send_bytes, -1) << this->GetType() << " sent -1 bytes";
   send_bytes_ += send_bytes;
