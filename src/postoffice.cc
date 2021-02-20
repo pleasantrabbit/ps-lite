@@ -43,8 +43,12 @@ void Postoffice::InitEnvironment() {
   verbose_ = GetEnv("PS_VERBOSE", 0);
 }
 
-void Postoffice::Start(int customer_id, const char* argv0, const bool do_barrier,
-                       const Node::Role role) {
+void Postoffice::Start(int customer_id, const Node::Role role, int rank,
+                       const bool do_barrier, const char* argv0) {
+  // set preferred rank
+  CHECK(rank >= -1) << rank;
+  preferred_rank_ = rank;
+
   start_mu_.lock();
   if (init_stage_ == 0) {
     InitEnvironment();

@@ -467,20 +467,26 @@ int main(int argc, char *argv[]) {
   CHECK(local_size || enable_cpu);
   skip_dev_id_check = env2bool("SKIP_DEV_ID_CHECK", false);
 
-  auto v = Environment::Get()->find("BENCHMARK_NTHREAD");
-  const int nthread = v ? atoi(v) : 1;
-  LOG(INFO) << "number of threads for the same worker = " << nthread;
-
   const char* val = CHECK_NOTNULL(Environment::Get()->find("DMLC_ROLE"));
   std::string role_str(val);
   Node::Role role = GetRole(role_str);
 
   // start system
-  StartPS(0, role);
+  int my_rank = env2int("DMLC_PREFERRED_RANK", -1);
+  StartPS(0, role, my_rank, true);
+  
+  // check rank
+  if (my_rank == -1) {
+    int assigned_rank = ps::Postoffice::Get()->my_rank();
+    CHECK(assigned_rank == my_rank) << assigned_rank << " v.s. " << my_rank;
+  }
+
   // setup server nodes
   StartServer(argc, argv);
   // run worker nodes
   if (!IsServer() && !IsScheduler()) {
+    const int nthread = env2int("BENCHMARK_NTHREAD", 1);
+    LOG(INFO) << "number of threads for the same worker = " << nthread;
     KVWorker<char> kv(0, 0);
     std::vector<std::thread> threads;
     for (int i = 0; i < nthread; ++i) {

@@ -33,6 +33,7 @@ inline int MyRank() { return Postoffice::Get()->my_rank(); }
  * This function will block until every nodes are started.
  * \param argv0 the program name, used for logging
  */
+
 inline Node::Role GetRole(const std::string role_str) {
   Node::Role role = Node::SCHEDULER;
   if (role_str == "worker") {
@@ -48,18 +49,26 @@ inline Node::Role GetRole(const std::string role_str) {
   }
   return role;
 }
-
-inline void StartPS(int customer_id, Node::Role role, bool async = false, const char *argv0 = nullptr) {
+/**
+ * \brief start the system
+ *
+ * This function will NOT block.
+ * \param customer_id the customer id
+ * \param preferred_rank the preferred rank. -1 means no preference and the rank will be assigned by
+          the scheduler. If the rank is non-negative, the preferred rank will be assigned accordingly.
+ * \param argv0 the program name, used for logging
+ */
+inline void StartPS(int customer_id, Node::Role role, int rank, bool do_barrier, const char *argv0 = nullptr) {
   if (role == Node::WORKER) {
-    Postoffice::GetWorker()->Start(customer_id, argv0, !async, role);
+    Postoffice::GetWorker()->Start(customer_id, role, rank, do_barrier, argv0);
   } else if (role == Node::SERVER || role == Node::SCHEDULER) {
-    Postoffice::GetServer()->Start(customer_id, argv0, !async, role);
+    Postoffice::GetServer()->Start(customer_id, role, rank, do_barrier, argv0);
   } else {
     // Joint PS: one worker, one server
-    std::thread thread_s(StartPS, customer_id, Node::SERVER, async, nullptr);
+    std::thread thread_s(StartPS, customer_id, Node::SERVER, rank, do_barrier, argv0);
     LOG(INFO) << "Postoffice server started.";
 
-    std::thread thread_w(StartPS, customer_id, Node::WORKER, async, nullptr);
+    std::thread thread_w(StartPS, customer_id, Node::WORKER, rank, do_barrier, argv0);
     LOG(INFO) << "Postoffice worker started.";
 
     thread_s.join();

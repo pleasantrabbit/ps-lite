@@ -241,7 +241,6 @@ void InitWorker(KVWorker<char>* kv, int len, int global_session_size, int global
       latest_key ++;
     }
   }
-
   Postoffice::GetWorker()->Barrier(0, ps::kWorkerGroup);
   LOG(INFO) << "Finish setup.";
 }
@@ -443,14 +442,15 @@ int main(int argc, char *argv[]) {
   const char* val = CHECK_NOTNULL(Environment::Get()->find("DMLC_ROLE"));
   std::string role_str(val);
   Node::Role role = GetRole(role_str);
+  int rank = -1;
   LOG(INFO) << "PS role = " << role_str;
   if (role == Node::SCHEDULER) {
-    StartPS(0, role);
+    StartPS(0, role, rank, true);
     Finalize(0, role, true);
     return 0;
   }
-  
-  StartPS(0, role);
+
+  StartPS(0, role, rank, true);
   // setup server logic
   StartServer();
   // run worker logic
@@ -467,6 +467,7 @@ int main(int argc, char *argv[]) {
     int global_gpu_size = local_gpu_size * num_node;
 
     auto node_id_str = Environment::Get()->find("BYTEPS_NODE_ID");
+    CHECK(node_id_str) << "Please set BYTEPS_NODE_ID";
     int node_id = atoi(node_id_str);
 
     bool is_global_root = (node_id == 0);

@@ -56,10 +56,11 @@ class Postoffice {
    *
    * This function will block until every nodes are started.
    * \param argv0 the program name, used for logging.
+   * \param preferred_rank the preferred rank. -1 means no preference and the rank will be assigned by
+      the scheduler. If the rank is non-negative, the preferred rank will be assigned accordingly.
    * \param do_barrier whether to block until every nodes are started.
    */
-  void Start(int customer_id, const char* argv0, const bool do_barrier,
-             const Node::Role role);
+  void Start(int customer_id, const Node::Role role, int rank, const bool do_barrier, const char* argv0);
   /**
    * \brief terminate the system
    *
@@ -154,6 +155,8 @@ class Postoffice {
    * servers. This function is available only after \ref Start has been called.
    */
   int my_rank() const { return IDtoRank(van_->my_node().id); }
+
+  int preferred_rank() const {return preferred_rank_;}
   /** \brief Returns true if this node is a worker node */
   int is_worker() const { return is_worker_; }
   /** \brief Returns true if this node is a server node. */
@@ -216,6 +219,9 @@ class Postoffice {
   std::vector<Range> server_key_ranges_;
   bool is_worker_, is_server_, is_scheduler_;
   int num_servers_, num_workers_;
+
+  // a hint for preferred rank
+  int preferred_rank_;
   std::unordered_map<int, std::unordered_map<int, bool> > barrier_done_;
   int verbose_;
   std::mutex barrier_mu_;

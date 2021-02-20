@@ -249,7 +249,8 @@ int main(int argc, char *argv[]) {
   const char* val = CHECK_NOTNULL(Environment::Get()->find("DMLC_ROLE"));
   std::string role_str(val);
   Node::Role role = GetRole(role_str);
-  StartPS(0, role);
+  int rank = -1; // -1 means no preferred rank
+  StartPS(0, role, rank, true);
   // setup server nodes
   StartServer();
   // run worker nodes
