@@ -476,7 +476,7 @@ int main(int argc, char *argv[]) {
   StartPS(0, role, my_rank, true);
   
   // check rank
-  if (my_rank == -1) {
+  if (my_rank != -1) {
     int assigned_rank = ps::Postoffice::Get()->my_rank();
     CHECK(assigned_rank == my_rank) << assigned_rank << " v.s. " << my_rank;
   }

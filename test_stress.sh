@@ -1,5 +1,5 @@
-export BINARY=${BINARY:-./tests/test_benchmark}
-export ARGS=${ARGS:-4096000 100000 1}
+export BINARY=${BINARY:-./tests/test_benchmark_stress}
+export ARGS=${ARGS:-30000000 1000000000 0}
 
 set -x
 
@@ -11,7 +11,7 @@ function cleanup() {
 trap cleanup EXIT
 cleanup # cleanup on startup
 
-export DMLC_NUM_WORKER=${DMLC_NUM_WORKER:-1}
+export DMLC_NUM_WORKER=${DMLC_NUM_WORKER:-2}
 export DMLC_NUM_SERVER=$DMLC_NUM_WORKER
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$UCX_HOME/lib:$LD_LIBRARY_PATH
 
@@ -37,20 +37,22 @@ export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-2,3}
 # export UCX_IB_GPU_DIRECT_RDMA=no
 
 export BYTEPS_ENABLE_IPC=0
-export BENCHMARK_NTHREAD=${BENCHMARK_NTHREAD:-1}
+export BENCHMARK_NTHREAD=${BENCHMARK_NTHREAD:-8}
 
 if [ $# -eq 0 ] # no other args
 then
     # launch scheduler
     echo "This is a joint node."
+    export BYTEPS_NODE_ID=0
     export DMLC_NODE_HOST=${NODE_ONE_IP}
     export UCX_RDMA_CM_SOURCE_ADDRESS=${NODE_ONE_IP}
 
-    DMLC_ROLE=scheduler $BINARY $ARGS &
-    DMLC_ROLE=server $BINARY $ARGS
+    DMLC_ROLE=scheduler $BINARY &
+    DMLC_ROLE=joint $BINARY $ARGS
 fi
 
 export DMLC_NODE_HOST=${NODE_TWO_IP}
 export UCX_RDMA_CM_SOURCE_ADDRESS=${NODE_TWO_IP}
+export BYTEPS_NODE_ID=1
 
-DMLC_ROLE=worker $BINARY $ARGS
+DMLC_ROLE=joint $BINARY $ARGS

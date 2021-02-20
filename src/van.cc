@@ -220,7 +220,7 @@ void Van::ProcessAddNodeCommandAtScheduler(Message *msg, Meta *nodes, Meta *reco
       for (int i = 0; i < num_workers; ++i) {
         CHECK(worker_ranks.find(i) != worker_ranks.end()) << i;
       }
-      CHECK(worker_ranks.size() == num_workers);
+      CHECK(worker_ranks.size() == (size_t) num_workers);
     }
 
 
