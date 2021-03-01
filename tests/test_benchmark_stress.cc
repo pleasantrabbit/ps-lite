@@ -282,7 +282,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid, int nthread)
   int node_id = atoi(node_id_str);
   int my_global_session_id = nthread * node_id + tid;
 
-  LOG(INFO) << "UCX usage simulate mode";
+  LOG(INFO) << "Gather scatter simulate mode";
   for (int minibatch = 0; minibatch < repeat; ++ minibatch) {
     // DataScatter
     uint64_t accumulated_ms = 0;
