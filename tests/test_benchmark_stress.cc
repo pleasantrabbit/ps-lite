@@ -105,6 +105,7 @@ void EmptyHandler(const KVMeta &req_meta, const KVPairs<Val> &req_data, KVServer
   }
   else {
     auto iter = mem_map.find(key);
+    CHECK(req_meta.val_len != 0);
     CHECK_NE(iter, mem_map.end()) << "Not found key: " << key - krs[node_id].begin();
     server->Response(req_meta, iter->second);
   }
@@ -447,6 +448,7 @@ int main(int argc, char *argv[]) {
   if (role == Node::SCHEDULER) {
     StartPS(0, role, rank, true);
     Finalize(0, role, true);
+    LOG(INFO) << "scheduler is DONE";
     return 0;
   }
 
@@ -485,5 +487,6 @@ int main(int argc, char *argv[]) {
   }
   // stop system
   Finalize(0, role, true);
+  LOG(INFO) << "joint worker/server is DONE";
   return 0;
 }

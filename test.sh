@@ -32,6 +32,16 @@ export PS_VERBOSE=${PS_VERBOSE:-1}
 # export UCX_RNDV_SCHEME=put_zcopy
 # export BYTEPS_UCX_SHORT_THRESH=0
 
+
+# ========================================
+# NOTE: preset default env vars for UCXVan
+# ========================================
+export UCX_USE_MT_MUTEX=y
+export UCX_IB_NUM_PATHS=2
+export UCX_SOCKADDR_CM_ENABLE=y
+export UCX_RNDV_THRESH=8k
+# ========================================
+
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-2,3}
 export TEST_NUM_GPU_WORKER=${TEST_NUM_GPU_WORKER:-0}
 export TEST_NUM_GPU_SERVER=${TEST_NUM_GPU_WORKER:-0}
