@@ -20,7 +20,6 @@
 #define DEBUG_PRINT_TENSOR_VALUE(X) (*((float *)(X) + 0))
 #define DEBUG_PRINT_TENSOR_ADDRESS(X) (reinterpret_cast<uint64_t>(X))
 
-
 using namespace ps;
 
 enum MODE { 
@@ -466,7 +465,8 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid) {
     case PUSH_PULL: 
     case PUSH_ONLY: 
     case PULL_ONLY: 
-      push_pull(kv, server_keys, server_vals, server_lens, len, num_servers, total_key_num, how_many_key_per_server, mode, tid);
+      push_pull(kv, server_keys, server_vals, server_lens, len, num_servers, total_key_num,
+                how_many_key_per_server, mode, tid);
       break;
     default:
       CHECK(0) << "unknown mode " << mode;

@@ -9,19 +9,19 @@ function cleanup() {
     sleep 1
 }
 trap cleanup EXIT
-cleanup # cleanup on startup
+# cleanup # cleanup on startup
 
 export DMLC_NUM_WORKER=${DMLC_NUM_WORKER:-1}
-export DMLC_NUM_SERVER=$DMLC_NUM_WORKER
+export DMLC_NUM_SERVER=${DMLC_NUM_SERVER:=$DMLC_NUM_WORKER}
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$UCX_HOME/lib:$LD_LIBRARY_PATH
 
 export DMLC_PS_ROOT_URI=${NODE_ONE_IP}
-export BYTEPS_ORDERED_HOSTS=${NODE_ONE_IP},${NODE_TWO_IP}
+# export BYTEPS_ORDERED_HOSTS=${NODE_ONE_IP},${NODE_TWO_IP}
 
 export DMLC_PS_ROOT_PORT=${DMLC_PS_ROOT_PORT:-12278} # scheduler's port (can random choose)
 export UCX_IB_TRAFFIC_CLASS=236
 export DMLC_INTERFACE=eth2        # my RDMA interface
-export UCX_NET_DEVICES=mlx5_2:1
+export UCX_NET_DEVICES=${UCX_NET_DEVICES:=mlx5_2:1}
 export UCX_MAX_RNDV_RAILS=${UCX_MAX_RNDV_RAILS:-2}
 
 export DMLC_ENABLE_RDMA=${DMLC_ENABLE_RDMA:-1}        # enable rdma
@@ -32,12 +32,11 @@ export PS_VERBOSE=${PS_VERBOSE:-1}
 # export UCX_RNDV_SCHEME=put_zcopy
 # export BYTEPS_UCX_SHORT_THRESH=0
 
-
 # ========================================
 # NOTE: preset default env vars for UCXVan
 # ========================================
 export UCX_USE_MT_MUTEX=y
-export UCX_IB_NUM_PATHS=2
+export UCX_IB_NUM_PATHS=${UCX_IB_NUM_PATHS:=2}
 export UCX_SOCKADDR_CM_ENABLE=y
 export UCX_RNDV_THRESH=8k
 # ========================================
@@ -53,18 +52,23 @@ export SKIP_DEV_ID_CHECK=${SKIP_DEV_ID_CHECK:-1}
 export BYTEPS_ENABLE_IPC=0
 export BENCHMARK_NTHREAD=${BENCHMARK_NTHREAD:-1}
 
-if [ $# -eq 0 ] # no other args
+if [ $1 == "local" ] # no other args
 then
     # launch scheduler
-    echo "This is a joint node."
+    echo "This is the local node."
     export DMLC_NODE_HOST=${NODE_ONE_IP}
     export UCX_RDMA_CM_SOURCE_ADDRESS=${NODE_ONE_IP}
 
     DMLC_ROLE=scheduler $BINARY $ARGS &
     DMLC_ROLE=server $BINARY $ARGS
+elif [ $1 == "remote" ]
+then
+    echo "This is the remote node."
+    export DMLC_NODE_HOST=${NODE_ONE_IP}
+    export DMLC_NODE_HOST=${NODE_TWO_IP}
+    export UCX_RDMA_CM_SOURCE_ADDRESS=${NODE_TWO_IP}
+
+    DMLC_ROLE=worker $BINARY $ARGS
+else
+    echo "Please specify either local or remote."
 fi
-
-export DMLC_NODE_HOST=${NODE_TWO_IP}
-export UCX_RDMA_CM_SOURCE_ADDRESS=${NODE_TWO_IP}
-
-DMLC_ROLE=worker $BINARY $ARGS

@@ -85,6 +85,7 @@ Van *Van::Create(const std::string &type, Postoffice* postoffice) {
   } else if (type == "ibverbs") {
     return new RDMAVan(postoffice);
   } else if (type == "1") {
+    LOG(INFO) << "Creating RDMAVan.";
     LOG(WARNING) << "DMLC_ENABLE_RDMA=1 will be deprecated. "
 	         << "Please use DMLC_ENABLE_RDMA=ibverbs instead.";
     return new RDMAVan(postoffice);
@@ -283,7 +284,7 @@ void Van::ProcessAddNodeCommandAtScheduler(Message *msg, Meta *nodes, Meta *reco
       Send(back);
     }
   } else {
-    PS_VLOG(2) << "AddNode: " << nodes->control.node.size() << " / " << num_nodes;
+    PS_VLOG(1) << "AddNode: " << nodes->control.node.size() << " / " << num_nodes;
   }
 }
 
@@ -593,9 +594,7 @@ int Van::Send(Message &msg) {
   CHECK_NE(send_bytes, -1) << this->GetType() << " sent -1 bytes";
   send_bytes_ += send_bytes;
   if (resender_) resender_->AddOutgoing(msg);
-  if (postoffice_->verbose() >= 2) {
-    PS_VLOG(2) << this->GetType() << "\tsent: " << msg.DebugString();
-  }
+  PS_VLOG(2) << this->GetType() << "\tsent: " << msg.DebugString();
   return send_bytes;
 }
 
@@ -618,9 +617,7 @@ void Van::Receiving() {
 
     CHECK_NE(recv_bytes, -1);
     recv_bytes_ += recv_bytes;
-    if (postoffice_->verbose() >= 2) {
-      PS_VLOG(2) << this->GetType() << "\treceived: " << msg.DebugString();
-    }
+    PS_VLOG(2) << this->GetType() << "\treceived: " << msg.DebugString();
     // duplicated message
     if (resender_ && resender_->AddIncomming(msg)) continue;
 

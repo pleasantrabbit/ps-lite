@@ -20,3 +20,4 @@ recommonmark/
 test_benchmark
 stress_test_benchmark
 !/tests/*.cc
+test
