@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <signal.h>
 #include "./base.h"
 
 #if DMLC_LOG_STACK_TRACE
@@ -252,6 +253,7 @@ class LogMessageFatal : public LogMessage {
   LogMessageFatal(const char *file, int line) : LogMessage(file, line) {}
   ~LogMessageFatal() {
     log_stream_ << "\n";
+    raise(SIGSEGV);
     abort();
   }
 
