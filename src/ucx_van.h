@@ -629,6 +629,8 @@ public:
     ucp_cleanup(context_);
   }
 
+  ucp_context_h                                     context_;
+
 private:
   /**
    * from the left to the right:
@@ -762,7 +764,7 @@ private:
   }
 
   UCXEndpointsPool                                  ep_pool_;
-  ucp_context_h                                     context_;
+  // ucp_context_h                                     context_;
   ucp_worker_h                                      worker_;
   ucp_listener_h                                    listener_;
   int                                               src_dev_idx_;
@@ -1100,6 +1102,29 @@ class UCXVan : public Van {
 
   void RegisterRecvBuffer(Message &msg) override {
     rx_pool_->Register(msg);
+  }
+
+  int MemReg(void *addr, size_t length, int should_alloc) {
+    ucp_mem_map_params_t mem_map_params;
+    memset(&mem_map_params, 0, sizeof(ucp_mem_map_params_t));
+    mem_map_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
+                                UCP_MEM_MAP_PARAM_FIELD_LENGTH  |
+                                UCP_MEM_MAP_PARAM_FIELD_FLAGS;
+    mem_map_params.address = addr;
+    mem_map_params.length = length;
+    mem_map_params.flags = UCP_MEM_MAP_NONBLOCK;
+    if (should_alloc)
+    {
+        mem_map_params.flags |= UCP_MEM_MAP_ALLOCATE;
+    }
+    ucp_mem_h memh = NULL;
+    int dev_id = -1;
+    if (cudaGetDevice(&dev_id) != cudaSuccess) {
+      LOG(ERROR) << "cudaGetDevicei failed";
+    }
+    auto tmp_ctx = ContextById(dev_id)->context_;
+    CHECK_STATUS(ucp_mem_map(tmp_ctx, &mem_map_params, &memh));
+    return 0;
   }
 
  private:

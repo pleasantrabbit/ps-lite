@@ -34,6 +34,10 @@ class RDMAVan : public Van {
     return std::string("rdma");
   }
 
+  virtual int MemReg(void *addr, size_t length, int should_alloc) {
+    return 0;
+  }
+
   Postoffice* postoffice_;
 
  protected:

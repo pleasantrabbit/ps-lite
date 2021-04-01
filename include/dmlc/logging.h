@@ -14,6 +14,7 @@
 #include <vector>
 #include <memory>
 #include "./base.h"
+#include <signal.h>
 
 #if DMLC_LOG_STACK_TRACE
 #include <cxxabi.h>
@@ -252,6 +253,7 @@ class LogMessageFatal : public LogMessage {
   LogMessageFatal(const char *file, int line) : LogMessage(file, line) {}
   ~LogMessageFatal() {
     log_stream_ << "\n";
+    raise(SIGSEGV);
     abort();
   }
 
@@ -264,6 +266,7 @@ class LogMessageFatal {
  public:
   LogMessageFatal(const char *file, int line) {
     log_stream_ << "[" << pretty_date_.HumanDate() << "] " << file << ":" << line << ": ";
+    raise(SIGSEGV);
   }
   std::ostringstream &stream() { return log_stream_; }
   ~LogMessageFatal() DMLC_THROW_EXCEPTION {

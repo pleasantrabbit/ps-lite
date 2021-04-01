@@ -3,6 +3,7 @@
 #include <thread>
 #include <cstdlib>
 #include <unistd.h>
+#include <iomanip>
 #include "ps/ps.h"
 
 #if DMLC_USE_CUDA
@@ -36,12 +37,14 @@ std::unordered_map<int, std::unordered_map<ps::Key, SArray<char>>> registered_bu
 bool debug_mode_ = false;
 int num_ports = 1;
 bool enable_recv_buffer = false;
-int local_size = 0;
+int g_local_num_gpu = 0;
 bool enable_cpu = 0;
 bool skip_dev_id_check = false;
-int num_gpu_server = 0;
+int g_server_num_gpu = 0;
 bool enable_cpu_server = 0;
-bool is_server = false;
+bool g_is_server = false;
+int g_num_servers = -1;
+bool g_pre_reg_mem = false;
 
 bool env2bool(const char* var, bool default_val) {
   auto env_str = Environment::Get()->find(var);
@@ -55,19 +58,19 @@ int env2int(const char* var, int default_val) {
   return val;
 }
 
-// when local_size > 0, we use context CPU(-1), GPU(0), GPU(1), etc
+// when g_local_num_gpu > 0, we use context CPU(-1), GPU(0), GPU(1), etc
 // otherwise, we use CPU(0), CPU(1), etc
 int src_key2ctx(int key) {
   int dev_id;
-  if (local_size == 0) {
+  if (g_local_num_gpu == 0) {
     dev_id = key % num_ports;
   } else {
     if (enable_cpu) {
-      int num_devices = local_size + 1;
+      int num_devices = g_local_num_gpu + 1;
       dev_id = key % num_devices;
       dev_id -= 1;
     } else {
-      dev_id = key % local_size;
+      dev_id = key % g_local_num_gpu;
     }
   }
   return dev_id;
@@ -75,15 +78,15 @@ int src_key2ctx(int key) {
 
 int dst_key2ctx(int key) {
   int dev_id;
-  if (num_gpu_server == 0) {
+  if (g_server_num_gpu == 0) {
     dev_id = key % num_ports;
   } else {
     if (enable_cpu_server) {
-      int num_devices = num_gpu_server + 1;
+      int num_devices = g_server_num_gpu + 1;
       dev_id = key % num_devices;
       dev_id -= 1;
     } else {
-      dev_id = key % num_gpu_server;
+      dev_id = key % g_server_num_gpu;
     }
   }
   return dev_id;
@@ -106,6 +109,9 @@ void aligned_memory_alloc(void** ptr, size_t size, int device_idx, DeviceType de
     // GPU Alloc, malloc should automatically gives page aligned.
     CUDA_CALL(cudaSetDevice(device_idx));
     CUDA_CALL(cudaMalloc(ptr, size));
+    if (g_pre_reg_mem) {
+      ps::Postoffice::Get()->van()->MemReg(*ptr, size, 0);
+    }
 #else
     CHECK(false) << "Please build with USE_CUDA=1";
 #endif
@@ -203,17 +209,26 @@ void EmptyHandler(const KVMeta &req_meta, const KVPairs<Val> &req_data, KVServer
 void GenerateVals(int total_key_num, int worker_rank,
                   int len, int num_ports,
                   std::vector<SArray<char>>* server_vals) {
+  // inside this function src always means worker, dst always means server
   // values are generated on the CPU/GPU depending on the env var
   // We assume LOCAL_SIZE number of GPU contexts
+
+  auto my_rank = ps::Postoffice::Get()->my_rank();
   for (int key = 0; key < total_key_num; key++) {
     void* ptr;
     SArray<char> vals;
+
+    if (g_is_server && my_rank != (key % g_num_servers)) {
+      server_vals->push_back(vals);
+      LOG(INFO) << "Init val[" << key << "]: " << "skipped";
+      continue;
+    }
     // CPU only
     int src_dev_id = src_key2ctx(key + worker_rank);
     int dst_dev_id = dst_key2ctx(key);
 
-    int dev_id = is_server ? dst_dev_id : src_dev_id;
-    int local_gpu_size = is_server ? num_gpu_server : local_size;
+    int dev_id = g_is_server ? dst_dev_id : src_dev_id;
+    int local_gpu_size = g_is_server ? g_server_num_gpu : g_local_num_gpu;
 
     if (local_gpu_size == 0) {
       // Normal all cpu unit test
@@ -221,12 +236,12 @@ void GenerateVals(int total_key_num, int worker_rank,
       vals.reset((char*) ptr, len * sizeof(char), [](void *){},
                  CPU, src_dev_id, CPU, dst_dev_id);
     } else {
-      DeviceType src_device = src_dev_id < 0 ? CPU : GPU;
-      DeviceType dst_device = dst_dev_id < 0 ? CPU : GPU;
-      DeviceType dev_type = is_server ? dst_device : src_device;
+      DeviceType src_dev_type = src_dev_id < 0 ? CPU : GPU;
+      DeviceType dst_dev_type = dst_dev_id < 0 ? CPU : GPU;
+      DeviceType dev_type = g_is_server ? dst_dev_type : src_dev_type;
       aligned_memory_alloc(&ptr, len, dev_id, dev_type);
       vals.reset((char*) ptr, len * sizeof(char), [](void *){},
-                 src_device, src_dev_id, dst_device, dst_dev_id);
+                 src_dev_type, src_dev_id, dst_dev_type, dst_dev_id);
     }
     server_vals->push_back(vals);
     LOG(INFO) << "Init val[" << key << "]: " << vals.DebugString();
@@ -246,7 +261,8 @@ void GenerateKeys(int total_key_num, std::vector<SArray<Key>>* server_keys) {
     ps::Key ps_key = krs[server].begin() + key;
     memcpy(ptr_key, &ps_key, sizeof(Key));
     server_keys->push_back(keys);
-    PS_VLOG(1) << "key=" << key << "(" << ps_key << ") assigned to server " << server;
+    PS_VLOG(1) << "key=" << key << "(" << std::right << std::setw(20) << ps_key << ", 0x" << std::hex
+               << std::setw(16) << ps_key << std::right << std::dec << ") assigned to server " << server;
   }
 }
 
@@ -263,7 +279,7 @@ void GenerateLens(int total_key_num, int len, std::vector<SArray<int>>* server_l
 }
 
 
-void StartServer(int argc, char *argv[]) {
+void RunServer(int argc, char *argv[]) {
   if (!IsServer()) return;
   debug_mode_ = Environment::Get()->find("DEBUG_MODE") ? true : false;
 
@@ -415,9 +431,19 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid) {
     ps::Postoffice::Get()->Barrier(0, kWorkerGroup + kServerGroup);
   }
 
+  auto time_mem_reg_cost_str = Environment::Get()->find("TIME_MEM_REG_COST");
+  auto time_mem_reg_cost = time_mem_reg_cost_str ? atoi(time_mem_reg_cost_str) : 0;
   // init push, do not count this into time cost
   for (int key = 0; key < total_key_num; key++) {
-    kv->Wait(kv->ZPush(server_keys[key], server_vals[key], server_lens[key]));
+    if (time_mem_reg_cost) {
+    /* only use vals of key 0, so that other buffers are not registered for
+     * GDR. This way the memory registration cost is included in the timing
+     * later on.
+     */
+      kv->Wait(kv->ZPush(server_keys[key], server_vals[0], server_lens[key]));
+    } else {
+      kv->Wait(kv->ZPush(server_keys[key], server_vals[key], server_lens[key]));
+    }
   }
 
   switch(mode) {
@@ -487,28 +513,31 @@ int main(int argc, char *argv[]) {
   }
   skip_dev_id_check = env2bool("SKIP_DEV_ID_CHECK", false);
   // num worker/server env vars
-  local_size = env2int("TEST_NUM_GPU_WORKER", 0);
-  LOG(INFO) << "TEST_NUM_GPU_WORKER = " << local_size;
-  enable_cpu = env2int("TEST_NUM_CPU_WORKER", 1);
-  num_gpu_server = env2int("TEST_NUM_GPU_SERVER", 0);
-  LOG(INFO) << "TEST_NUM_GPU_SERVER = " << num_gpu_server;
-  enable_cpu_server = env2int("TEST_NUM_CPU_SERVER", 1);
+  g_local_num_gpu = env2int("TEST_WORKER_NUM_GPU", 0);
+  LOG(INFO) << "TEST_WORKER_NUM_GPU = " << g_local_num_gpu;
+  enable_cpu = env2int("TEST_WORKER_NUM_CPU", 1);
+  g_server_num_gpu = env2int("TEST_SERVER_NUM_GPU", 0);
+  LOG(INFO) << "TEST_SERVER_NUM_GPU = " << g_server_num_gpu;
+  enable_cpu_server = env2int("TEST_SERVER_NUM_CPU", 1);
+  g_pre_reg_mem = env2int("TEST_PRE_REG_MEM", 0);
 
   // role
   const char* val = CHECK_NOTNULL(Environment::Get()->find("DMLC_ROLE"));
   std::string role_str(val);
   Node::Role role = GetRole(role_str);
-  is_server = role_str == std::string("server");
-  if (is_server) {
-    CHECK(num_gpu_server || enable_cpu_server);
+  g_is_server = role_str == std::string("server");
+  if (g_is_server) {
+    CHECK(g_server_num_gpu || enable_cpu_server);
   } else {
-    CHECK(local_size || enable_cpu);
+    CHECK(g_local_num_gpu || enable_cpu);
   }
 
   // start system
   int my_rank = env2int("DMLC_PREFERRED_RANK", -1);
   StartPS(0, role, my_rank, true);
-  
+
+  g_num_servers = Postoffice::Get()->num_servers();
+
   // check rank
   if (my_rank != -1) {
     int assigned_rank = ps::Postoffice::Get()->my_rank();
@@ -516,7 +545,9 @@ int main(int argc, char *argv[]) {
   }
 
   // setup server nodes
-  StartServer(argc, argv);
+  if (IsServer()) {
+    RunServer(argc, argv);
+  }
   // run worker nodes
   if (!IsServer() && !IsScheduler()) {
     const int nthread = env2int("BENCHMARK_NTHREAD", 1);

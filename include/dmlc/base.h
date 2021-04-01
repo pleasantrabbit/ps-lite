@@ -18,7 +18,7 @@
  *  do not use FATAL and CHECK in destructors
  */
 #ifndef DMLC_LOG_FATAL_THROW
-#define DMLC_LOG_FATAL_THROW 1
+#define DMLC_LOG_FATAL_THROW 0
 #endif
 
 /*!
