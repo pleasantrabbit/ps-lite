@@ -37,8 +37,8 @@ std::unordered_map<int, std::unordered_map<ps::Key, SArray<char>>> registered_bu
 bool debug_mode_ = false;
 int num_ports = 1;
 bool enable_recv_buffer = false;
-int g_local_num_gpu = 0;
-bool enable_cpu = 0;
+int g_worker_num_gpu = 0;
+bool g_worker_enable_cpu = 0;
 bool skip_dev_id_check = false;
 int g_server_num_gpu = 0;
 bool enable_cpu_server = 0;
@@ -58,19 +58,19 @@ int env2int(const char* var, int default_val) {
   return val;
 }
 
-// when g_local_num_gpu > 0, we use context CPU(-1), GPU(0), GPU(1), etc
+// when g_worker_num_gpu > 0, we use context CPU(-1), GPU(0), GPU(1), etc
 // otherwise, we use CPU(0), CPU(1), etc
 int src_key2ctx(int key) {
   int dev_id;
-  if (g_local_num_gpu == 0) {
+  if (g_worker_num_gpu == 0) {
     dev_id = key % num_ports;
   } else {
-    if (enable_cpu) {
-      int num_devices = g_local_num_gpu + 1;
+    if (g_worker_enable_cpu) {
+      int num_devices = g_worker_num_gpu + 1;
       dev_id = key % num_devices;
       dev_id -= 1;
     } else {
-      dev_id = key % g_local_num_gpu;
+      dev_id = key % g_worker_num_gpu;
     }
   }
   return dev_id;
@@ -218,7 +218,7 @@ void GenerateVals(int total_key_num, int worker_rank,
     void* ptr;
     SArray<char> vals;
 
-    if (g_is_server && my_rank != (key % g_num_servers)) {
+    if (g_is_server && my_rank != ((key + worker_rank) % g_num_servers)) {
       server_vals->push_back(vals);
       LOG(INFO) << "Init val[" << key << "]: " << "skipped";
       continue;
@@ -228,7 +228,7 @@ void GenerateVals(int total_key_num, int worker_rank,
     int dst_dev_id = dst_key2ctx(key);
 
     int dev_id = g_is_server ? dst_dev_id : src_dev_id;
-    int local_gpu_size = g_is_server ? g_server_num_gpu : g_local_num_gpu;
+    int local_gpu_size = g_is_server ? g_server_num_gpu : g_worker_num_gpu;
 
     if (local_gpu_size == 0) {
       // Normal all cpu unit test
@@ -248,11 +248,12 @@ void GenerateVals(int total_key_num, int worker_rank,
   }
 }
 
-void GenerateKeys(int total_key_num, std::vector<SArray<Key>>* server_keys) {
+void GenerateKeys(int total_key_num, int worker_rank,
+                  std::vector<SArray<Key>>* server_keys) {
   auto krs = ps::Postoffice::Get()->GetServerKeyRanges();
   const int num_servers = krs.size();
   for (int key = 0; key < total_key_num; key++) {
-    int server = key % num_servers;
+    int server = (key + worker_rank) % num_servers;
     // page aligned keys
     void* ptr_key;
     aligned_memory_alloc(&ptr_key, sizeof(Key), -1, CPU);
@@ -303,10 +304,10 @@ void RunServer(int argc, char *argv[]) {
     std::vector<SArray<Key>> server_keys;
     std::vector<SArray<int>> server_lens;
     GenerateVals(total_key_num, worker_rank, len, num_ports, &server_vals);
-    GenerateKeys(total_key_num, &server_keys);
+    GenerateKeys(total_key_num, worker_rank, &server_keys);
     GenerateLens(total_key_num, len, &server_lens);
     for (int key = 0; key < total_key_num; ++key) {
-      if (my_rank == (key % num_servers)) {
+      if (my_rank == ((key + worker_rank) % num_servers)) {
         int worker_id = ps::Postoffice::Get()->WorkerRankToID(worker_rank);
         server->RegisterRecvBuffer(worker_id, server_keys[key], server_vals[key],
                                    server_lens[key]);
@@ -423,7 +424,7 @@ void RunWorker(int argc, char *argv[], KVWorker<char>* kv, int tid) {
   std::vector<SArray<int>> server_lens;
 
   GenerateVals(total_key_num, my_rank, len, num_ports, &server_vals);
-  GenerateKeys(total_key_num, &server_keys);
+  GenerateKeys(total_key_num, my_rank, &server_keys);
   GenerateLens(total_key_num, len, &server_lens);
 
   // place a barrier to make sure the server has all the buffers registered.
@@ -513,9 +514,9 @@ int main(int argc, char *argv[]) {
   }
   skip_dev_id_check = env2bool("SKIP_DEV_ID_CHECK", false);
   // num worker/server env vars
-  g_local_num_gpu = env2int("TEST_WORKER_NUM_GPU", 0);
-  LOG(INFO) << "TEST_WORKER_NUM_GPU = " << g_local_num_gpu;
-  enable_cpu = env2int("TEST_WORKER_NUM_CPU", 1);
+  g_worker_num_gpu = env2int("TEST_WORKER_NUM_GPU", 0);
+  LOG(INFO) << "TEST_WORKER_NUM_GPU = " << g_worker_num_gpu;
+  g_worker_enable_cpu = env2int("TEST_WORKER_NUM_CPU", 1);
   g_server_num_gpu = env2int("TEST_SERVER_NUM_GPU", 0);
   LOG(INFO) << "TEST_SERVER_NUM_GPU = " << g_server_num_gpu;
   enable_cpu_server = env2int("TEST_SERVER_NUM_CPU", 1);
@@ -529,7 +530,7 @@ int main(int argc, char *argv[]) {
   if (g_is_server) {
     CHECK(g_server_num_gpu || enable_cpu_server);
   } else {
-    CHECK(g_local_num_gpu || enable_cpu);
+    CHECK(g_worker_num_gpu || g_worker_enable_cpu);
   }
 
   // start system
